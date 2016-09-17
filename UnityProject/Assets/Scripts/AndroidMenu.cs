@@ -5,7 +5,7 @@ using UnityEngine.UI;
 public class AndroidMenu : MonoBehaviour
 {
 
-    public GameObject OutputLabel;
+    public Text OutputLabel;
 
 	// Use this for initialization
 	void Start () {
@@ -19,9 +19,6 @@ public class AndroidMenu : MonoBehaviour
 
     public void OnBtnTest_Click()
     {
-        var text = OutputLabel.GetComponent<GUIText>();
-
-        if (text != null)
-            text.text = "Button Pressed";
+        OutputLabel.text = "Button Pressed";
     }
 }
