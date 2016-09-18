@@ -1,11 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections;
-using UnityEngine.UI;
 
-public class AndroidMenu : MonoBehaviour
-{
-
-    public Text OutputLabel;
+public class QuitApplication : MonoBehaviour {
 
 	// Use this for initialization
 	void Start () {
@@ -17,8 +13,8 @@ public class AndroidMenu : MonoBehaviour
 	
 	}
 
-    public void OnBtnTest_Click()
+    public void OnQuitApplication()
     {
-        OutputLabel.text = "Button Pressed";
+        Application.Quit();
     }
 }

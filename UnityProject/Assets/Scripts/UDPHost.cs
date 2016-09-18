@@ -1,28 +1,35 @@
 ﻿using System;
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Xml.Schema;
-using UnityEngine.UI;
+using Assets;
+using UnityEngine.Events;
+using Text = UnityEngine.UI.Text;
+
+[Serializable]
+public class AlergyEvent: UnityEvent<FhirWrapper> { }
 
 public class UDPHost : MonoBehaviour
 {
-    public Text StatusText;
-
-    
-
     public struct PacketHeader
     {
-        public PacketTypes id;
-        public int length;
+        public PacketTypes PacketType;
+        public int Payload;
 
         public enum PacketTypes
         {
             Announce = 0,
-            Response = 1
+            Response = 1,
+            PatientId = 2,
+            Allergy = 3,
+            Distraction = 4,
+            Welcome = 5,
+            Facts = 6
         }
 
         public byte[] Encode()
@@ -53,24 +60,35 @@ public class UDPHost : MonoBehaviour
 
     #region Private Fields
 
-    Thread rxThread;
-    bool running = true;
+    Thread _rxThread;
+    bool _running = true;
+
+    FhirWrapper _patientData;
+
+    IPEndPoint _remoteEndPoint;
 
     #endregion
 
-    public int port;
+    public int Port;
+
+    public UnityEvent ConnectedEvent;
+    public UnityEvent PlayDistraction;
+    public UnityEvent PlayWelcome;
+    public UnityEvent PlayFacts;
+    public AlergyEvent PlayAlergy;
 
 	// Use this for initialization
 	void Start () {
-        rxThread = new Thread(RXStart);
-	    rxThread.IsBackground = true;
-        rxThread.Start();
+        _packets = new Queue<PacketHeader>();
+        _rxThread = new Thread(RXStart);
+	    _rxThread.IsBackground = true;
+        _rxThread.Start();
 	}
 
     void OnDestroy()
     {
-        running = false;
-        rxThread.Join(1000);
+        _running = false;
+        _rxThread.Join(1000);
     }
 
     /// <summary>
@@ -84,44 +102,74 @@ public class UDPHost : MonoBehaviour
         udpClient.ExclusiveAddressUse = false;
 
         // Bind
-        udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, port));
+        udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, Port));
 
-        var remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
+        _remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
 
         // Main loop
-        while (running)
+        while (_running)
         {
-            // Only try to get packets if they're available
+            // Only try to get _packets if they're available
             if (udpClient.Available > 0)
             {
                 // Get the packet bytes
-                var buffer = udpClient.Receive(ref remoteEndPoint);
+                var buffer = udpClient.Receive(ref _remoteEndPoint);
                 var header = PacketHeader.Decode(buffer);
 
-                switch (header.id)
+                if (header.PacketType == PacketHeader.PacketTypes.Announce)
                 {
-                    case PacketHeader.PacketTypes.Announce:
-                        // Send back an announcement
-                        var newPacket = new PacketHeader()
-                        {
-                            id = PacketHeader.PacketTypes.Response,
-                            length = 0
-                        };
-                        var data = newPacket.Encode();
-                        udpClient.Send(data, data.Length, new IPEndPoint(remoteEndPoint.Address, port));
-
-                        StatusText.text = string.Format("Connected to - {0}", remoteEndPoint.Address);
-                        break;
+                    // Send back an announcement
+                    var newPacket = new PacketHeader()
+                    {
+                        PacketType = PacketHeader.PacketTypes.Response,
+                        Payload = 0
+                    };
+                    var data = newPacket.Encode();
+                    udpClient.Send(data, data.Length, _remoteEndPoint);
                 }
+                else if (header.PacketType == PacketHeader.PacketTypes.PatientId)
+                {
+                    _patientData = new FhirWrapper(header.Payload.ToString());
+                }
+
+                _packets.Enqueue(header);
             }
         }
 
         // At the end of the program, close the client
         udpClient.Close();
     }
+
+    private Queue<PacketHeader> _packets;
     
     // Update is called once per frame
 	void Update () {
-	    
+
+	    while (_packets.Count > 0)
+	    {
+	        var nextPacket = _packets.Dequeue();
+
+	        switch (nextPacket.PacketType)
+	        {
+                case PacketHeader.PacketTypes.Announce:
+                    ConnectedEvent.Invoke();
+	                break;
+
+                case PacketHeader.PacketTypes.Allergy:
+                    PlayAlergy.Invoke(_patientData);
+                    break;
+                case PacketHeader.PacketTypes.Distraction:
+                    PlayDistraction.Invoke();
+                    break;
+                case PacketHeader.PacketTypes.Welcome:
+                    PlayWelcome.Invoke();
+                    break;
+                case PacketHeader.PacketTypes.Facts:
+                    PlayFacts.Invoke();
+                    break;
+	        }
+	    }
+
+        Canvas.ForceUpdateCanvases();
 	}
 }
